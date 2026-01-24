@@ -1,0 +1,114 @@
+name: Smart Notification Manager
+
+on:
+  repository_dispatch:
+    types: [new_notification]
+
+jobs:
+  manage_and_notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Controller
+        uses: actions/checkout@v3
+
+      - name: Calculate Repo & Create if Missing
+        id: repo_manager
+        env:
+          GH_TOKEN: ${{ secrets.NOTIFY_ADMIN_TOKEN }} # Needs 'repo' and 'workflow' scope
+          ORG_NAME: "ZaidAlamgir" # UPDATED: Your GitHub Username
+        run: |
+          # 1. Calculate Index based on Year (Base year 2026 = 1)
+          CURRENT_YEAR=$(date +%Y)
+          BASE_YEAR=2026
+          INDEX=$((CURRENT_YEAR - BASE_YEAR + 1))
+          
+          # Ensure index is at least 1
+          if [ $INDEX -lt 1 ]; then INDEX=1; fi
+          
+          TARGET_REPO="TMP_notify_store${INDEX}"
+          echo "Target Repo: $TARGET_REPO"
+          echo "target_repo=$TARGET_REPO" >> $GITHUB_OUTPUT
+
+          # 2. Check if repo exists using GitHub CLI
+          if gh repo view "$ORG_NAME/$TARGET_REPO" > /dev/null 2>&1; then
+            echo "✅ Repo $TARGET_REPO already exists."
+          else
+            echo "⚠️ Repo $TARGET_REPO does not exist. Creating now..."
+            # Create Private Repo
+            gh repo create "$ORG_NAME/$TARGET_REPO" --private --description "Notification Storage for Year $CURRENT_YEAR"
+            
+            # Initialize it (hacky way to ensure main branch exists)
+            git config --global user.email "bot@tmpnews.com"
+            git config --global user.name "NotifyBot"
+            mkdir temp_init
+            cd temp_init
+            echo "# Notification Storage $CURRENT_YEAR" > README.md
+            git init
+            git add .
+            git commit -m "Initial commit"
+            git branch -M main
+            git remote add origin "https://$GH_TOKEN@github.com/$ORG_NAME/$TARGET_REPO.git"
+            git push -u origin main
+            cd ..
+            rm -rf temp_init
+            echo "✅ Created and initialized $TARGET_REPO"
+          fi
+
+      - name: Save Data to Target Private Repo
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.NOTIFY_ADMIN_TOKEN }}
+          ORG_NAME: "ZaidAlamgir" # UPDATED: Your GitHub Username
+          TARGET_REPO: ${{ steps.repo_manager.outputs.target_repo }}
+        run: |
+          # Clone the specific yearly repo
+          git clone "https://$API_TOKEN_GITHUB@github.com/$ORG_NAME/$TARGET_REPO.git" private_storage
+          cd private_storage
+          
+          # Organize by Month/Day
+          FOLDER_NAME=$(date +%m-%d)
+          mkdir -p "notifications/$FOLDER_NAME"
+          
+          # Create JSON File containing ONLY the metadata (Headline, Image, etc.)
+          # Note: Full article body is NOT included here.
+          FILENAME="notify_$(date +%s).json"
+          echo '${{ toJson(github.event.client_payload) }}' > "notifications/$FOLDER_NAME/$FILENAME"
+          
+          # Commit & Push
+          git config --global user.email "bot@tmpnews.com"
+          git config --global user.name "NotifyBot"
+          git add .
+          git commit -m "New Notification: ${{ github.event.client_payload.headline }}"
+          git push origin main
+
+      - name: Authenticate to Firebase
+        id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          token_format: 'access_token'
+
+      - name: Send Notification to Android App
+        run: |
+          ACCESS_TOKEN="${{ steps.auth.outputs.access_token }}"
+          PROJECT_ID="tmp-app-380a9" # UPDATED: Your Firebase Project ID
+          
+          # Send to 'news_alerts' topic
+          curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "message": {
+              "topic": "news_alerts",
+              "data": {
+                "title": "${{ github.event.client_payload.headline }}",
+                "body": "${{ github.event.client_payload.subheadline }}",
+                "image": "${{ github.event.client_payload.image_url }}",
+                "author": "${{ github.event.client_payload.author }}",
+                "date": "${{ github.event.client_payload.date }}",
+                "type": "${{ github.event.client_payload.type }}"
+              },
+              "android": {
+                "priority": "high"
+              }
+            }
+          }' \
+          "https://fcm.googleapis.com/v1/projects/$PROJECT_ID/messages:send"
