@@ -90,9 +90,8 @@ jobs:
       - name: Send Notification to Android App
         run: |
           ACCESS_TOKEN="${{ steps.auth.outputs.access_token }}"
-          PROJECT_ID="tmp-app-380a9" # UPDATED: Your Firebase Project ID
+          PROJECT_ID="tmp-app-380a9"
           
-          # Send to 'news_alerts' topic
           curl -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
@@ -104,7 +103,8 @@ jobs:
                 "image": "${{ github.event.client_payload.image_url }}",
                 "author": "${{ github.event.client_payload.author }}",
                 "date": "${{ github.event.client_payload.date }}",
-                "type": "${{ github.event.client_payload.type }}"
+                "type": "${{ github.event.client_payload.type }}",
+                "link": "${{ github.event.client_payload.link }}" 
               },
               "android": {
                 "priority": "high"
