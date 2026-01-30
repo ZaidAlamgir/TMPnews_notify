@@ -33,7 +33,7 @@ jobs:
           BASE_YEAR=2026
           INDEX=$((CURRENT_YEAR - BASE_YEAR + 1))
           if [ $INDEX -lt 1 ]; then INDEX=1; fi
-          
+           
           TARGET_REPO="TMP_notify_store${INDEX}"
           echo "Target Repo: $TARGET_REPO"
           echo "target_repo=$TARGET_REPO" >> $GITHUB_OUTPUT
@@ -68,13 +68,13 @@ jobs:
         run: |
           git clone "https://$API_TOKEN_GITHUB@github.com/$ORG_NAME/$TARGET_REPO.git" private_storage
           cd private_storage
-          
+           
           FOLDER_NAME=$(date +%m-%d)
           mkdir -p "notifications/$FOLDER_NAME"
-          
+           
           FILENAME="notify_$(date +%s).json"
           echo '${{ toJson(github.event.client_payload) }}' > "notifications/$FOLDER_NAME/$FILENAME"
-          
+           
           git config --global user.email "bot@tmpnews.com"
           git config --global user.name "NotifyBot"
           git add .
@@ -85,13 +85,28 @@ jobs:
       - name: Send Notification via FCM
         uses: actions/github-script@v6
         env:
-          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TMP_APP_380A9 }}
+          # 👇 FIXED: Using correct secret name
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         with:
           script: |
             const admin = require('firebase-admin');
             
-            // Initialize Firebase
-            const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+            // 1. Safe JSON Parsing (Prevents crash if secret is missing)
+            const rawCreds = process.env.FIREBASE_CREDENTIALS;
+            if (!rawCreds) {
+              core.setFailed("❌ ERROR: Secret FIREBASE_SERVICE_ACCOUNT is missing or empty.");
+              return;
+            }
+
+            let serviceAccount;
+            try {
+              serviceAccount = JSON.parse(rawCreds);
+            } catch (e) {
+              core.setFailed(`❌ ERROR: JSON Parse failed. Check secret content. Error: ${e.message}`);
+              return;
+            }
+
+            // 2. Initialize Firebase
             if (!admin.apps.length) {
               admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount)
@@ -101,7 +116,7 @@ jobs:
             // Get Payload
             const payload = context.payload.client_payload;
             
-            // Construct Message (Safe from Quote Crashes)
+            // Construct Message
             const message = {
               topic: 'news_alerts',
               data: {
@@ -111,11 +126,11 @@ jobs:
                 author: payload.author || "TMP News",
                 date: payload.date || new Date().toISOString(),
                 type: "standard", 
-                link: payload.link || "tmp://home" // Fallback if link is missing
+                link: payload.link || "tmp://home" 
               },
               android: {
-                priority: 'high',  // Wake up device
-                ttl: 86400000      // 24 Hours (in Milliseconds for Node SDK)
+                priority: 'high',
+                ttl: 86400000
               }
             };
 
