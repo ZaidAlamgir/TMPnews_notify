@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # --- STEP 2: SETUP NODE (Required for safe JSON handling) ---
+      # --- STEP 2: SETUP NODE ---
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
@@ -21,31 +21,27 @@ jobs:
       - name: Install Firebase Admin
         run: npm install firebase-admin
 
-      # --- STEP 3: ARCHIVE TO PRIVATE REPO (Your Custom Logic) ---
+      # --- STEP 3: ARCHIVE TO PRIVATE REPO ---
       - name: Calculate Repo & Create if Missing
         id: repo_manager
         env:
           GH_TOKEN: ${{ secrets.NOTIFY_ADMIN_TOKEN }} 
           ORG_NAME: "ZaidAlamgir"
         run: |
-          # 1. Calculate Index based on Year
           CURRENT_YEAR=$(date +%Y)
           BASE_YEAR=2026
           INDEX=$((CURRENT_YEAR - BASE_YEAR + 1))
           if [ $INDEX -lt 1 ]; then INDEX=1; fi
            
           TARGET_REPO="TMP_notify_store${INDEX}"
-          echo "Target Repo: $TARGET_REPO"
           echo "target_repo=$TARGET_REPO" >> $GITHUB_OUTPUT
 
-          # 2. Check/Create Repo
           if gh repo view "$ORG_NAME/$TARGET_REPO" > /dev/null 2>&1; then
-            echo "✅ Repo $TARGET_REPO already exists."
+            echo "✅ Repo $TARGET_REPO exists."
           else
-            echo "⚠️ Repo $TARGET_REPO does not exist. Creating now..."
+            echo "⚠️ Creating $TARGET_REPO..."
             gh repo create "$ORG_NAME/$TARGET_REPO" --private --description "Notification Storage $CURRENT_YEAR"
             
-            # Initialize repo
             git config --global user.email "bot@tmpnews.com"
             git config --global user.name "NotifyBot"
             mkdir temp_init && cd temp_init
@@ -57,7 +53,6 @@ jobs:
             git remote add origin "https://$GH_TOKEN@github.com/$ORG_NAME/$TARGET_REPO.git"
             git push -u origin main
             cd .. && rm -rf temp_init
-            echo "✅ Created and initialized $TARGET_REPO"
           fi
 
       - name: Save Data to Target Private Repo
@@ -81,20 +76,24 @@ jobs:
           git commit -m "New Notification: ${{ github.event.client_payload.headline }}"
           git push origin main
 
-      # --- STEP 4: SEND NOTIFICATION (Safe Node.js Version) ---
+      # --- ⏳ NEW STEP: WAIT FOR DEPLOYMENT (60 Seconds) ---
+      # This pauses the workflow to ensure the article is live before notifying users.
+      - name: ⏳ Wait for 60 Seconds (Deployment Buffer)
+        run: sleep 60
+
+      # --- STEP 4: SEND NOTIFICATION ---
       - name: Send Notification via FCM
         uses: actions/github-script@v6
         env:
-          # 👇 FIXED: Using correct secret name
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         with:
           script: |
             const admin = require('firebase-admin');
             
-            // 1. Safe JSON Parsing (Prevents crash if secret is missing)
+            // 1. Safe JSON Parsing
             const rawCreds = process.env.FIREBASE_CREDENTIALS;
             if (!rawCreds) {
-              core.setFailed("❌ ERROR: Secret FIREBASE_SERVICE_ACCOUNT is missing or empty.");
+              core.setFailed("❌ ERROR: Secret FIREBASE_SERVICE_ACCOUNT is missing.");
               return;
             }
 
@@ -102,7 +101,7 @@ jobs:
             try {
               serviceAccount = JSON.parse(rawCreds);
             } catch (e) {
-              core.setFailed(`❌ ERROR: JSON Parse failed. Check secret content. Error: ${e.message}`);
+              core.setFailed(`❌ ERROR: JSON Parse failed: ${e.message}`);
               return;
             }
 
