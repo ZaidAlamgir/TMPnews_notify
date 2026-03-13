@@ -32,7 +32,7 @@ jobs:
           BASE_YEAR=2026
           INDEX=$((CURRENT_YEAR - BASE_YEAR + 1))
           if [ $INDEX -lt 1 ]; then INDEX=1; fi
-           
+            
           TARGET_REPO="TMP_notify_store${INDEX}"
           echo "target_repo=$TARGET_REPO" >> $GITHUB_OUTPUT
 
@@ -63,13 +63,13 @@ jobs:
         run: |
           git clone "https://$API_TOKEN_GITHUB@github.com/$ORG_NAME/$TARGET_REPO.git" private_storage
           cd private_storage
-           
+            
           FOLDER_NAME=$(date +%m-%d)
           mkdir -p "notifications/$FOLDER_NAME"
-           
+            
           FILENAME="notify_$(date +%s).json"
           echo '${{ toJson(github.event.client_payload) }}' > "notifications/$FOLDER_NAME/$FILENAME"
-           
+            
           git config --global user.email "bot@tmpnews.com"
           git config --global user.name "NotifyBot"
           git add .
@@ -112,7 +112,7 @@ jobs:
               });
             }
 
-            // Get Payload
+            // Get Payload from ORGcms.html
             const payload = context.payload.client_payload;
             
             // Construct Message
@@ -125,6 +125,7 @@ jobs:
                 author: payload.author || "TMP News",
                 date: payload.date || new Date().toISOString(),
                 type: "standard", 
+                // ✅ Grabs the generated URL from the CMS payload
                 link: payload.link || "tmp://home" 
               },
               android: {
