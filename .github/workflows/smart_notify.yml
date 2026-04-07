@@ -60,6 +60,9 @@ jobs:
           API_TOKEN_GITHUB: ${{ secrets.NOTIFY_ADMIN_TOKEN }}
           ORG_NAME: "ZaidAlamgir"
           TARGET_REPO: ${{ steps.repo_manager.outputs.target_repo }}
+          # ✅ FIX 1: Pass the payload and headline as safe environment variables
+          PAYLOAD_JSON: ${{ toJson(github.event.client_payload) }}
+          HEADLINE: ${{ github.event.client_payload.headline }}
         run: |
           git clone "https://$API_TOKEN_GITHUB@github.com/$ORG_NAME/$TARGET_REPO.git" private_storage
           cd private_storage
@@ -68,15 +71,17 @@ jobs:
           mkdir -p "notifications/$FOLDER_NAME"
             
           FILENAME="notify_$(date +%s).json"
-          echo '${{ toJson(github.event.client_payload) }}' > "notifications/$FOLDER_NAME/$FILENAME"
+          
+          # ✅ FIX 1: Write the environment variable to the file
+          echo "$PAYLOAD_JSON" > "notifications/$FOLDER_NAME/$FILENAME"
             
           git config --global user.email "bot@tmpnews.com"
           git config --global user.name "NotifyBot"
           git add .
-          git commit -m "New Notification: ${{ github.event.client_payload.headline }}"
+          git commit -m "New Notification: $HEADLINE"
           git push origin main
 
-      # --- ⏳ NEW STEP: WAIT FOR DEPLOYMENT (60 Seconds) ---
+      # --- ⏳ WAIT FOR DEPLOYMENT (60 Seconds) ---
       # This pauses the workflow to ensure the article is live before notifying users.
       - name: ⏳ Wait for 60 Seconds (Deployment Buffer)
         run: sleep 60
@@ -118,6 +123,14 @@ jobs:
             // Construct Message
             const message = {
               topic: 'news_alerts',
+              
+              // ✅ FIX 2: Added Notification object so the lock screen pop-up appears
+              notification: {
+                title: payload.headline,
+                body: payload.subheadline || "Tap to read more",
+                imageUrl: payload.image_url || "" 
+              },
+              
               data: {
                 title: payload.headline,
                 body: payload.subheadline || "Tap to read more",
@@ -125,7 +138,6 @@ jobs:
                 author: payload.author || "TMP News",
                 date: payload.date || new Date().toISOString(),
                 type: "standard", 
-                // ✅ Grabs the generated URL from the CMS payload
                 link: payload.link || "tmp://home" 
               },
               android: {
