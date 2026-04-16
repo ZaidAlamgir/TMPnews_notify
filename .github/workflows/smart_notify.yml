@@ -32,7 +32,7 @@ jobs:
           BASE_YEAR=2026
           INDEX=$((CURRENT_YEAR - BASE_YEAR + 1))
           if [ $INDEX -lt 1 ]; then INDEX=1; fi
-            
+           
           TARGET_REPO="TMP_notify_store${INDEX}"
           echo "target_repo=$TARGET_REPO" >> $GITHUB_OUTPUT
 
@@ -41,7 +41,7 @@ jobs:
           else
             echo "⚠️ Creating $TARGET_REPO..."
             gh repo create "$ORG_NAME/$TARGET_REPO" --private --description "Notification Storage $CURRENT_YEAR"
-            
+             
             git config --global user.email "bot@tmpnews.com"
             git config --global user.name "NotifyBot"
             mkdir temp_init && cd temp_init
@@ -60,29 +60,32 @@ jobs:
           API_TOKEN_GITHUB: ${{ secrets.NOTIFY_ADMIN_TOKEN }}
           ORG_NAME: "ZaidAlamgir"
           TARGET_REPO: ${{ steps.repo_manager.outputs.target_repo }}
-          # ✅ FIX 1: Pass the payload and headline as safe environment variables
           PAYLOAD_JSON: ${{ toJson(github.event.client_payload) }}
           HEADLINE: ${{ github.event.client_payload.headline }}
         run: |
           git clone "https://$API_TOKEN_GITHUB@github.com/$ORG_NAME/$TARGET_REPO.git" private_storage
           cd private_storage
-            
+           
           FOLDER_NAME=$(date +%m-%d)
           mkdir -p "notifications/$FOLDER_NAME"
-            
+           
           FILENAME="notify_$(date +%s).json"
           
-          # ✅ FIX 1: Write the environment variable to the file
-          echo "$PAYLOAD_JSON" > "notifications/$FOLDER_NAME/$FILENAME"
-            
+          # 🚨 The EOF fix: Stops quotes from crashing GitHub Actions
+          cat << EOF > "notifications/$FOLDER_NAME/$FILENAME"
+          $PAYLOAD_JSON
+          EOF
+           
           git config --global user.email "bot@tmpnews.com"
           git config --global user.name "NotifyBot"
           git add .
-          git commit -m "New Notification: $HEADLINE"
+          
+          SAFE_HEADLINE=$(echo "$HEADLINE" | tr -d "\"'")
+          git commit -m "New Notification: $SAFE_HEADLINE"
+          
           git push origin main
 
       # --- ⏳ WAIT FOR DEPLOYMENT (60 Seconds) ---
-      # This pauses the workflow to ensure the article is live before notifying users.
       - name: ⏳ Wait for 60 Seconds (Deployment Buffer)
         run: sleep 60
 
@@ -94,7 +97,7 @@ jobs:
         with:
           script: |
             const admin = require('firebase-admin');
-            
+             
             // 1. Safe JSON Parsing
             const rawCreds = process.env.FIREBASE_CREDENTIALS;
             if (!rawCreds) {
@@ -119,18 +122,18 @@ jobs:
 
             // Get Payload from ORGcms.html
             const payload = context.payload.client_payload;
-            
-            // Construct Message
+             
+            // Construct Message with HIGH PRIORITY to wake the device
             const message = {
               topic: 'news_alerts',
-              
-              // ✅ FIX 2: Added Notification object so the lock screen pop-up appears
+               
+              // The Notification block ensures the OS handles it when the app is completely closed
               notification: {
                 title: payload.headline,
                 body: payload.subheadline || "Tap to read more",
                 imageUrl: payload.image_url || "" 
               },
-              
+               
               data: {
                 title: payload.headline,
                 body: payload.subheadline || "Tap to read more",
@@ -138,11 +141,27 @@ jobs:
                 author: payload.author || "TMP News",
                 date: payload.date || new Date().toISOString(),
                 type: "standard", 
-                link: payload.link || "tmp://home" 
+                link: payload.link || "https://www.tmpnews.com/" 
               },
+              
+              // 🚨 Forces Android devices to wake up from Doze mode and show the notification immediately
               android: {
                 priority: 'high',
-                ttl: 86400000
+                ttl: 86400000,
+                notification: {
+                  defaultSound: true,
+                  defaultVibrateTimings: true
+                }
+              },
+              
+              // 🚨 Forces iOS devices to process the notification immediately (if you have iOS users)
+              apns: {
+                payload: {
+                  aps: {
+                    'content-available': 1,
+                    sound: 'default'
+                  }
+                }
               }
             };
 
