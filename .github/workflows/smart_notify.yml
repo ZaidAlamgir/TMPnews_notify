@@ -90,52 +90,50 @@ jobs:
         run: sleep 60
 
       # --- STEP 4: SEND NOTIFICATION ---
-      - name: Send Notification via FCM
-        uses: actions/github-script@v6
+      - name: Send Notification via FCM (Native Node)
         env:
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        with:
-          script: |
-            // 🚨 Use modern modular imports to bypass global object errors
-            const { initializeApp, cert, getApps } = require('firebase-admin/app');
-            const { getMessaging } = require('firebase-admin/messaging');
-              
+          CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          # Create a native Node.js script dynamically
+          cat << 'EOF' > send_notification.js
+          const { initializeApp, cert, getApps } = require('firebase-admin/app');
+          const { getMessaging } = require('firebase-admin/messaging');
+
+          async function run() {
             // 1. Safe JSON Parsing
             const rawCreds = process.env.FIREBASE_CREDENTIALS;
             if (!rawCreds) {
-              core.setFailed("❌ ERROR: Secret FIREBASE_SERVICE_ACCOUNT is missing.");
-              return;
+              console.error("❌ ERROR: Secret FIREBASE_SERVICE_ACCOUNT is missing.");
+              process.exit(1);
             }
 
             let serviceAccount;
             try {
               serviceAccount = JSON.parse(rawCreds);
             } catch (e) {
-              core.setFailed(`❌ ERROR: JSON Parse failed: ${e.message}`);
-              return;
+              console.error(`❌ ERROR: JSON Parse failed: ${e.message}`);
+              process.exit(1);
             }
 
             // 2. Initialize Firebase (Modern Syntax)
-            if (!getApps().length) {
+            if (getApps().length === 0) {
               initializeApp({
                 credential: cert(serviceAccount)
               });
             }
 
-            // Get Payload from ORGcms.html
-            const payload = context.payload.client_payload;
-              
-            // Construct Message with HIGH PRIORITY to wake the device
+            // 3. Parse Payload from Environment
+            const payload = JSON.parse(process.env.CLIENT_PAYLOAD || "{}");
+
+            // 4. Construct Message
             const message = {
               topic: 'news_alerts',
-                
-              // The Notification block ensures the OS handles it when the app is completely closed
               notification: {
                 title: payload.headline,
                 body: payload.subheadline || "Tap to read more",
                 imageUrl: payload.image_url || "" 
               },
-                
               data: {
                 title: payload.headline,
                 body: payload.subheadline || "Tap to read more",
@@ -145,8 +143,6 @@ jobs:
                 type: "standard", 
                 link: payload.link || "https://www.tmpnews.com/" 
               },
-              
-              // 🚨 Forces Android devices to wake up from Doze mode and show the notification immediately
               android: {
                 priority: 'high',
                 ttl: 86400000,
@@ -155,8 +151,6 @@ jobs:
                   defaultVibrateTimings: true
                 }
               },
-              
-              // 🚨 Forces iOS devices to process the notification immediately
               apns: {
                 payload: {
                   aps: {
@@ -170,10 +164,17 @@ jobs:
             console.log("Sending FCM Message...");
 
             try {
-              // 🚨 Send using the modern messaging module
               const response = await getMessaging().send(message);
               console.log('✅ Successfully sent message:', response);
             } catch (error) {
               console.error('❌ Error sending message:', error);
-              core.setFailed(error.message);
+              process.exit(1);
             }
+          }
+
+          // Execute the function
+          run();
+          EOF
+          
+          # Run the created script using the Node setup from Step 2
+          node send_notification.js
