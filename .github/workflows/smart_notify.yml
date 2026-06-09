@@ -19,7 +19,7 @@ jobs:
           node-version: '16'
 
       - name: Install Firebase Admin
-        run: npm install firebase-admin
+        run: npm install firebase-admin@11.11.1
 
       # --- STEP 3: ARCHIVE TO PRIVATE REPO ---
       - name: Calculate Repo & Create if Missing
@@ -32,7 +32,7 @@ jobs:
           BASE_YEAR=2026
           INDEX=$((CURRENT_YEAR - BASE_YEAR + 1))
           if [ $INDEX -lt 1 ]; then INDEX=1; fi
-           
+            
           TARGET_REPO="TMP_notify_store${INDEX}"
           echo "target_repo=$TARGET_REPO" >> $GITHUB_OUTPUT
 
@@ -41,7 +41,7 @@ jobs:
           else
             echo "⚠️ Creating $TARGET_REPO..."
             gh repo create "$ORG_NAME/$TARGET_REPO" --private --description "Notification Storage $CURRENT_YEAR"
-             
+              
             git config --global user.email "bot@tmpnews.com"
             git config --global user.name "NotifyBot"
             mkdir temp_init && cd temp_init
@@ -65,17 +65,17 @@ jobs:
         run: |
           git clone "https://$API_TOKEN_GITHUB@github.com/$ORG_NAME/$TARGET_REPO.git" private_storage
           cd private_storage
-           
+            
           FOLDER_NAME=$(date +%m-%d)
           mkdir -p "notifications/$FOLDER_NAME"
-           
+            
           FILENAME="notify_$(date +%s).json"
           
           # 🚨 The EOF fix: Stops quotes from crashing GitHub Actions
           cat << EOF > "notifications/$FOLDER_NAME/$FILENAME"
           $PAYLOAD_JSON
           EOF
-           
+            
           git config --global user.email "bot@tmpnews.com"
           git config --global user.name "NotifyBot"
           git add .
@@ -97,7 +97,7 @@ jobs:
         with:
           script: |
             const admin = require('firebase-admin');
-             
+              
             // 1. Safe JSON Parsing
             const rawCreds = process.env.FIREBASE_CREDENTIALS;
             if (!rawCreds) {
@@ -122,18 +122,18 @@ jobs:
 
             // Get Payload from ORGcms.html
             const payload = context.payload.client_payload;
-             
+              
             // Construct Message with HIGH PRIORITY to wake the device
             const message = {
               topic: 'news_alerts',
-               
+                
               // The Notification block ensures the OS handles it when the app is completely closed
               notification: {
                 title: payload.headline,
                 body: payload.subheadline || "Tap to read more",
                 imageUrl: payload.image_url || "" 
               },
-               
+                
               data: {
                 title: payload.headline,
                 body: payload.subheadline || "Tap to read more",
