@@ -14,12 +14,12 @@ jobs:
 
       # --- STEP 2: SETUP NODE ---
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '16'
+          node-version: '20'
 
       - name: Install Firebase Admin
-        run: npm install firebase-admin@11.11.1
+        run: npm install firebase-admin
 
       # --- STEP 3: ARCHIVE TO PRIVATE REPO ---
       - name: Calculate Repo & Create if Missing
@@ -96,7 +96,9 @@ jobs:
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         with:
           script: |
-            const admin = require('firebase-admin');
+            // 🚨 Use modern modular imports to bypass global object errors
+            const { initializeApp, cert, getApps } = require('firebase-admin/app');
+            const { getMessaging } = require('firebase-admin/messaging');
               
             // 1. Safe JSON Parsing
             const rawCreds = process.env.FIREBASE_CREDENTIALS;
@@ -113,10 +115,10 @@ jobs:
               return;
             }
 
-            // 2. Initialize Firebase
-            if (!admin.apps.length) {
-              admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount)
+            // 2. Initialize Firebase (Modern Syntax)
+            if (!getApps().length) {
+              initializeApp({
+                credential: cert(serviceAccount)
               });
             }
 
@@ -154,7 +156,7 @@ jobs:
                 }
               },
               
-              // 🚨 Forces iOS devices to process the notification immediately (if you have iOS users)
+              // 🚨 Forces iOS devices to process the notification immediately
               apns: {
                 payload: {
                   aps: {
@@ -168,7 +170,8 @@ jobs:
             console.log("Sending FCM Message...");
 
             try {
-              const response = await admin.messaging().send(message);
+              // 🚨 Send using the modern messaging module
+              const response = await getMessaging().send(message);
               console.log('✅ Successfully sent message:', response);
             } catch (error) {
               console.error('❌ Error sending message:', error);
