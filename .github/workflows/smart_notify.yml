@@ -85,9 +85,9 @@ jobs:
           
           git push origin main
 
-      # --- ⏳ WAIT FOR DEPLOYMENT (60 Seconds) ---
-      - name: ⏳ Wait for 60 Seconds (Deployment Buffer)
-        run: sleep 60
+      # --- ⏳ WAIT FOR DEPLOYMENT (120 Seconds) ---
+      - name: ⏳ Wait for 120 Seconds (Deployment Buffer)
+        run: sleep 120
 
       # --- STEP 4: SEND NOTIFICATION ---
       - name: Send Notification via FCM (Native Node)
